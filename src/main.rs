@@ -428,6 +428,15 @@ enum TouchAction {
     },
 }
 
+/// Behave like a normal Unix tool when stdout closes early: `clicker apps list
+/// | head` should stop quietly rather than panic on a broken pipe.
+fn restore_sigpipe() {
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 /// Truthy environment flag: 1, true, yes and on all count.
 fn env_flag(name: &str) -> bool {
     match std::env::var(name) {
@@ -462,6 +471,7 @@ fn parse_point(value: &str) -> std::result::Result<(i64, i64), String> {
 
 #[tokio::main]
 async fn main() {
+    restore_sigpipe();
     let mut cli = Cli::parse();
     cli.json = cli.json || env_flag("CLICKER_JSON");
     if cli.device.as_deref().unwrap_or_default().is_empty() {
