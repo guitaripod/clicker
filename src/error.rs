@@ -42,9 +42,6 @@ pub enum Error {
     /// still matters.
     #[error("see the message above")]
     Reported { exit_code: i32 },
-
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
 }
 
 impl Error {
@@ -58,7 +55,7 @@ impl Error {
             Error::Protocol(_) | Error::Opack(_) => 7,
             Error::Config(_) | Error::Discovery(_) => 8,
             Error::Reported { exit_code } => *exit_code,
-            Error::Io(_) | Error::Other(_) => 1,
+            Error::Io(_) => 1,
         }
     }
 
@@ -76,7 +73,6 @@ impl Error {
             Error::Config(_) => "config_error",
             Error::Discovery(_) => "discovery_error",
             Error::Io(_) => "io_error",
-            Error::Other(_) => "error",
             Error::Reported { .. } => "reported",
         }
     }

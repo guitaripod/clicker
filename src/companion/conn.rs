@@ -49,12 +49,11 @@ impl Connection {
             (Some(cipher), true) => cipher.seal(payload, &header)?,
             _ => payload.to_vec(),
         };
-        tracing::debug!(
-            frame = ?frame_type,
-            payload = payload.len(),
-            encrypted,
-            "send frame"
-        );
+        crate::log::debug(format_args!(
+            "send {:?} frame, {} bytes, encrypted={encrypted}",
+            frame_type,
+            payload.len()
+        ));
         self.stream.write_all(&header).await?;
         self.stream.write_all(&body).await?;
         self.stream.flush().await?;
@@ -81,7 +80,11 @@ impl Connection {
                         (Some(cipher), len) if len > 0 => cipher.open(&payload, &header)?,
                         _ => payload,
                     };
-                    tracing::debug!(frame = ?frame_type, payload = payload.len(), "recv frame");
+                    crate::log::debug(format_args!(
+                        "recv {:?} frame, {} bytes",
+                        frame_type,
+                        payload.len()
+                    ));
                     return Ok((frame_type, payload));
                 }
             }

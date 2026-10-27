@@ -143,11 +143,11 @@ impl Client {
             }
         }
 
-        tracing::info!(
-            session = format_args!("0x{:x}", client.sid),
-            tv_os = client.info.os_version.as_deref().unwrap_or("?"),
-            "connected"
-        );
+        crate::log::info(format_args!(
+            "connected, session 0x{:x}, tvOS {}",
+            client.sid,
+            client.info.os_version.as_deref().unwrap_or("?")
+        ));
         Ok(client)
     }
 
@@ -172,7 +172,7 @@ impl Client {
         ]);
         self.send_opack(message)?;
 
-        tracing::debug!(command = identifier, "request");
+        crate::log::debug(format_args!("request {identifier}"));
         match tokio::time::timeout(self.timeout, receiver).await {
             Ok(Ok(response)) => {
                 if let Some(error) = response.get("_em") {

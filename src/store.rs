@@ -198,9 +198,22 @@ fn store_path() -> Result<PathBuf> {
     if let Some(dir) = env_dir("XDG_CONFIG_HOME") {
         return Ok(dir.join("clicker/devices.json"));
     }
+    Ok(config_root()?.join("clicker/devices.json"))
+}
+
+/// Follow the platform convention: `~/Library/Application Support` on macOS,
+/// `$XDG_CONFIG_HOME` (or `~/.config`) everywhere else.
+fn config_root() -> Result<PathBuf> {
+    if let Some(dir) = env_dir("XDG_CONFIG_HOME") {
+        return Ok(dir);
+    }
     let home =
-        dirs::home_dir().ok_or_else(|| Error::Config("cannot locate home directory".into()))?;
-    Ok(home.join(".config/clicker/devices.json"))
+        env_dir("HOME").ok_or_else(|| Error::Config("cannot locate home directory".into()))?;
+    if cfg!(target_os = "macos") {
+        Ok(home.join("Library/Application Support"))
+    } else {
+        Ok(home.join(".config"))
+    }
 }
 
 fn env_dir(name: &str) -> Option<PathBuf> {

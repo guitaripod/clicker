@@ -7,6 +7,7 @@ pub mod discovery;
 pub mod error;
 pub mod guide;
 pub mod hap;
+pub mod log;
 pub mod opack;
 pub mod output;
 pub mod setup;

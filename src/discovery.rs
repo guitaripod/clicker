@@ -34,9 +34,24 @@ pub struct Discovered {
     /// is what a real Apple TV does. Unmatched records are usually a Mac
     /// advertising the Remote service for Continuity.
     pub airplay_confirmed: bool,
+    /// This computer advertising its own Remote service. Pairing with it would
+    /// be pairing with ourselves, so it is never a setup candidate.
+    pub local: bool,
 }
 
 pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discovered>> {
+    scan_until(timeout, include_unknown, |_| false).await
+}
+
+/// Like [`scan`], but returns as soon as `ready` accepts what has arrived, so a
+/// first run does not wait out the whole window when the Apple TV answers at
+/// once. macOS in particular can deliver the real TV a few seconds after this
+/// computer's own Continuity record.
+pub async fn scan_until(
+    timeout: Duration,
+    include_unknown: bool,
+    ready: impl Fn(&[Discovered]) -> bool,
+) -> Result<Vec<Discovered>> {
     let daemon = ServiceDaemon::new()
         .map_err(|err| crate::Error::Discovery(format!("cannot start mDNS discovery: {err}")))?;
     let companion_rx = daemon.browse(COMPANION).map_err(|err| {
@@ -51,6 +66,7 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
         ))
     })?;
 
+    let locals = local_addresses();
     let mut companion: HashMap<String, ServiceInfo> = HashMap::new();
     let mut airplay: HashMap<String, ServiceInfo> = HashMap::new();
 
@@ -66,7 +82,7 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
                         companion.remove(&fullname);
                     }
                     Ok(_) => {}
-                    Err(_) => return,
+                    Err(_) => break,
                 },
                 event = airplay_rx.recv_async() => match event {
                     Ok(ServiceEvent::ServiceResolved(info)) => {
@@ -77,14 +93,30 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
                         airplay.remove(&fullname);
                     }
                     Ok(_) => {}
-                    Err(_) => return,
+                    Err(_) => break,
                 },
             }
+            let found = build(&companion, &airplay, include_unknown, &locals);
+            if ready(&found) {
+                return found;
+            }
         }
+        build(&companion, &airplay, include_unknown, &locals)
     };
-    let _ = tokio::time::timeout(timeout, collect).await;
-    let _ = daemon.shutdown();
 
+    let found = tokio::time::timeout(timeout, collect)
+        .await
+        .unwrap_or_else(|_| build(&companion, &airplay, include_unknown, &locals));
+    let _ = daemon.shutdown();
+    Ok(found)
+}
+
+fn build(
+    companion: &HashMap<String, ServiceInfo>,
+    airplay: &HashMap<String, ServiceInfo>,
+    include_unknown: bool,
+    locals: &[IpAddr],
+) -> Vec<Discovered> {
     let airplay_by_id: HashMap<String, &ServiceInfo> = airplay
         .values()
         .filter_map(|info| {
@@ -99,11 +131,18 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
         let paired_hint = rp_id.as_ref().and_then(|id| airplay_by_id.get(id)).copied();
         let model = txt(info, "rpMd").map(str::to_string);
         let claims_media_device = model.as_deref().map(is_media_device).unwrap_or(false);
+        let local = info
+            .get_addresses()
+            .iter()
+            .any(|address| locals.contains(address));
 
         // A companion record whose AirPlay twin is a Mac or a TV is the Remote
         // app's own advertisement; a record without an Apple TV model is not a
         // controllable device either.
         if !claims_media_device && !include_unknown {
+            continue;
+        }
+        if local && !include_unknown {
             continue;
         }
         let airplay_confirmed = paired_hint
@@ -135,6 +174,7 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
             pairable: flags & 0x4000 != 0,
             pairing_disabled: flags & 0x04 != 0,
             airplay_confirmed,
+            local,
         });
     }
 
@@ -144,7 +184,18 @@ pub async fn scan(timeout: Duration, include_unknown: bool) -> Result<Vec<Discov
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     found.dedup_by(|a, b| a.id == b.id);
-    Ok(found)
+    found
+}
+
+fn local_addresses() -> Vec<IpAddr> {
+    if_addrs::get_if_addrs()
+        .map(|interfaces| {
+            interfaces
+                .into_iter()
+                .map(|interface| interface.ip())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn is_media_device(model: &str) -> bool {

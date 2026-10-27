@@ -477,19 +477,7 @@ async fn main() {
     if cli.device.as_deref().unwrap_or_default().is_empty() {
         cli.device = Some(device_from_env()).flatten();
     }
-    let level = match cli.verbose {
-        0 => "warn",
-        1 => "info",
-        _ => "debug",
-    };
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level)),
-        )
-        .with_writer(std::io::stderr)
-        .without_time()
-        .init();
+    clicker::log::set_level(clicker::log::level_from_env().unwrap_or(cli.verbose));
 
     let out = Output::new(cli.json);
     let code = match run(cli).await {
@@ -645,8 +633,16 @@ async fn scan(ctx: &Context, timeout: f64, all: bool) -> Result<()> {
 }
 
 async fn pair(ctx: &mut Context, pin: Option<String>, name: String, force: bool) -> Result<()> {
-    let found = discovery::scan(Duration::from_millis(2500), false).await?;
-    let pairable: Vec<_> = found.into_iter().filter(|device| device.pairable).collect();
+    let found = discovery::scan_until(Duration::from_secs(6), false, |devices| {
+        devices
+            .iter()
+            .any(|device| device.airplay_confirmed && !device.local)
+    })
+    .await?;
+    let pairable: Vec<_> = found
+        .into_iter()
+        .filter(|device| device.pairable && !device.local)
+        .collect();
     let confirmed: Vec<_> = pairable
         .iter()
         .filter(|device| device.airplay_confirmed)

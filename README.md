@@ -32,7 +32,8 @@ Try this next:
 
 ## Install
 
-You need Rust 1.87 or newer and Avahi, which most desktops already run.
+Rust 1.87 or newer. On Linux you also need Avahi (or another mDNS responder),
+which most desktops already run; macOS has mDNSResponder built in.
 
 ```sh
 git clone https://github.com/guitaripod/clicker.git
@@ -41,8 +42,21 @@ scripts/install.sh
 ```
 
 The script checks for Rust, builds the binary, installs it to `~/.cargo/bin`,
-adds shell completions, and tells you if Avahi is not running. If Rust is
+adds shell completions, and warns if mDNS discovery is not running. If Rust is
 missing it prints the one command that installs it.
+
+Already have Rust? Then this is the same thing with no clone:
+
+```sh
+cargo install --git https://github.com/guitaripod/clicker --locked
+```
+
+**macOS:** works the same way, including on Apple Silicon. If discovery finds
+nothing, allow Local Network access for your terminal in System Settings →
+Privacy & Security → Local Network (a CLI started from a terminal inherits the
+terminal's permission).
+
+Tested on Arch Linux and macOS 27; CI builds and tests both.
 
 ## Set up your Apple TV (about a minute)
 
@@ -58,7 +72,9 @@ clicker setup
    try.
 
 That is the whole setup. The pairing is stored in
-`~/.config/clicker/devices.json` (readable only by you) and survives reboots.
+`~/.config/clicker/devices.json` on Linux and
+`~/Library/Application Support/clicker/devices.json` on macOS (readable only by
+you, mode 0600) and survives reboots.
 
 Prefer to be told what to do? `clicker guide` prints every command, grouped by
 task. `clicker doctor` checks the parts that can break.
@@ -114,6 +130,7 @@ protocol has no way to inject audio.
 | `the Apple TV did not show a code` | The TV was asleep or off. Wake it with the Siri Remote and run `clicker setup` again. |
 | `the Apple TV rejected the code` | The code changes every attempt. Watch the TV while typing; `clicker setup` retries twice before giving up. |
 | `paired, but the connection check failed` | The TV went back to sleep. Wake it, run `clicker status`; if it still fails, `clicker setup --force`. |
+| macOS: `no Apple TV answered` | Allow Local Network access for your terminal in System Settings → Privacy & Security → Local Network, then retry. Right after waking the Apple TV its mDNS can be silent for a minute; `clicker setup` now keeps looking for about half a minute. |
 | Anything else | `clicker doctor` prints each check with a fix, and `-vv` shows the protocol frames. |
 
 ## JSON contract

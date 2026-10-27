@@ -93,7 +93,9 @@ impl PairSetup {
             )
             .await?;
         let tlv = pairing_tlv(&response)?;
-        tracing::info!("pair-setup started; the Apple TV is showing a PIN");
+        crate::log::info(format_args!(
+            "pair-setup started; the Apple TV is showing a PIN"
+        ));
         Ok(Self {
             salt: tlv.require(tag::SALT, "salt")?.to_vec(),
             server_public: tlv.require(tag::PUBLIC_KEY, "public key")?.to_vec(),
@@ -206,7 +208,9 @@ impl PairSetup {
             .verify_strict(&signed, &Signature::from_bytes(&device_signature))
             .map_err(|_| Error::Authentication("device signature did not verify".into()))?;
 
-        tracing::info!("pair-setup finished; device signature verified");
+        crate::log::info(format_args!(
+            "pair-setup finished; device signature verified"
+        ));
         Ok(Credentials {
             device_public_key: device_key,
             client_secret_key: signing_key.to_bytes(),
@@ -301,7 +305,7 @@ pub async fn verify(
         .await?;
     pairing_tlv(&response)?;
 
-    tracing::debug!("pair-verify finished");
+    crate::log::debug(format_args!("pair-verify finished"));
     Ok((
         hkdf_sha512(b"", "ClientEncrypt-main", shared.as_bytes()),
         hkdf_sha512(b"", "ServerEncrypt-main", shared.as_bytes()),

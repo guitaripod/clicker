@@ -25,22 +25,11 @@ pub struct Options {
 pub async fn run(ctx: &mut Context, options: Options) -> Result<()> {
     heading(ctx, "1/3", "Looking for your Apple TV…");
     ctx.out.event(json!({ "type": "searching" }));
-    let found = discovery::scan(Duration::from_millis(2500), false)
-        .await
-        .map_err(|err| {
-            onboard_error(
-                ctx,
-                "discovery_failed",
-                8,
-                &err.to_string(),
-                &[
-                    "On Arch and most desktops: sudo systemctl enable --now avahi-daemon",
-                    "On a minimal server, install avahi (or any mDNS responder) first.",
-                    "Then run `clicker setup` again.",
-                ],
-            )
-        })?;
-    let pairable: Vec<Discovered> = found.into_iter().filter(|device| device.pairable).collect();
+    let found = find_apple_tv(ctx).await?;
+    let pairable: Vec<Discovered> = found
+        .into_iter()
+        .filter(|device| device.pairable && !device.local)
+        .collect();
     // Records that also have a matching AirPlay advertisement are real Apple
     // TVs; the rest are usually a Mac running the Remote service.
     let confirmed: Vec<Discovered> = pairable
@@ -144,6 +133,46 @@ pub async fn run(ctx: &mut Context, options: Options) -> Result<()> {
     ));
 
     verify_and_finish(ctx, &device).await
+}
+
+/// mDNS answers can be missed once while a device wakes up, so a second look is
+/// cheaper than sending the user to a troubleshooting checklist.
+async fn find_apple_tv(ctx: &Context) -> Result<Vec<Discovered>> {
+    let ready = |devices: &[Discovered]| {
+        devices
+            .iter()
+            .any(|device| device.airplay_confirmed && !device.local)
+    };
+    let mut found = Vec::new();
+    for (attempt, seconds) in [6u64, 8, 10].into_iter().enumerate() {
+        if attempt > 0 {
+            ctx.out.text(format!(
+                "     {}",
+                ctx.out.dim("no answer yet, still looking…")
+            ));
+        }
+        found = discovery::scan_until(Duration::from_secs(seconds), false, ready)
+            .await
+            .map_err(|err| discovery_failure(ctx, &err))?;
+        if !found.is_empty() {
+            break;
+        }
+    }
+    Ok(found)
+}
+
+fn discovery_failure(ctx: &Context, err: &Error) -> Error {
+    onboard_error(
+        ctx,
+        "discovery_failed",
+        8,
+        &err.to_string(),
+        &[
+            "On Linux: sudo systemctl enable --now avahi-daemon",
+            "On macOS: allow Local Network access for your terminal in System Settings → Privacy & Security.",
+            "Then run `clicker setup` again.",
+        ],
+    )
 }
 
 async fn pair_with_retries(
