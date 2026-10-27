@@ -1,6 +1,6 @@
 [package]
 name = "clicker"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.87"
 description = "Apple TV remote for the terminal: buttons, touch, typing, apps and power over the Companion protocol"

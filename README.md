@@ -51,6 +51,15 @@ Already have Rust? Then this is the same thing with no clone:
 cargo install --git https://github.com/guitaripod/clicker --locked
 ```
 
+Or take a prebuilt binary from the [latest
+release](https://github.com/guitaripod/clicker/releases/latest) — Linux x86_64
+and macOS arm64, with SHA-256 checksums — and put it somewhere on your `PATH`:
+
+```sh
+tar xzf clicker-*-x86_64-unknown-linux-gnu.tar.gz
+sudo install -m755 clicker /usr/local/bin/clicker
+```
+
 **macOS:** works the same way, including on Apple Silicon. If discovery finds
 nothing, allow Local Network access for your terminal in System Settings →
 Privacy & Security → Local Network (a CLI started from a terminal inherits the
