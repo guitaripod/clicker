@@ -1,7 +1,7 @@
 //! Companion client: session setup, commands, events.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -45,6 +45,7 @@ pub struct Client {
     pub info: DeviceInfo,
     /// Media-control capability flags pushed by the device at connect.
     pub media_flags: Option<i64>,
+    alive: Arc<AtomicBool>,
 }
 
 impl Client {
@@ -63,6 +64,7 @@ impl Client {
             Arc::new(Mutex::new(HashMap::new()));
         let (events, _) = broadcast::channel(64);
         let (tx, rx) = mpsc::channel(32);
+        let alive = Arc::new(AtomicBool::new(true));
 
         tokio::spawn(writer_loop(writer, out_cipher, rx));
         tokio::spawn(reader_loop(
@@ -71,6 +73,7 @@ impl Client {
             in_cipher,
             pending.clone(),
             events.clone(),
+            alive.clone(),
         ));
 
         let mut client = Self {
@@ -86,6 +89,7 @@ impl Client {
                 name: None,
             },
             media_flags: None,
+            alive,
         };
 
         let info = client.system_info(credentials).await?;
@@ -208,6 +212,9 @@ impl Client {
     }
 
     fn send_opack(&self, message: Value) -> Result<()> {
+        if !self.alive.load(Ordering::SeqCst) {
+            return Err(Error::Protocol("connection closed by the Apple TV".into()));
+        }
         let payload = opack::pack(&message)?;
         self.tx
             .try_send(Outbound {
@@ -610,6 +617,7 @@ async fn reader_loop(
     mut cipher: Option<Direction>,
     pending: Arc<Mutex<HashMap<u16, oneshot::Sender<Value>>>>,
     events: broadcast::Sender<Event>,
+    alive: Arc<AtomicBool>,
 ) {
     loop {
         let (frame_type, payload) = match read_frame(&mut reader, &mut buffer, &mut cipher).await {
@@ -642,6 +650,8 @@ async fn reader_loop(
             _ => {}
         }
     }
+    alive.store(false, Ordering::SeqCst);
+    pending.lock().unwrap().clear();
 }
 
 async fn read_frame(

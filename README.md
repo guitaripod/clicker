@@ -174,6 +174,7 @@ protocol has no way to inject audio.
 | `the Apple TV rejected the code` | The code changes every attempt. Watch the TV while typing; `clicker setup` retries twice before giving up. |
 | `paired, but the connection check failed` | The TV went back to sleep. Wake it, run `clicker status`; if it still fails, `clicker setup --force`. |
 | macOS: `no Apple TV answered` | Allow Local Network access for your terminal in System Settings → Privacy & Security → Local Network, then retry. Right after waking the Apple TV its mDNS can be silent for a minute; `clicker setup` now keeps looking for about half a minute. |
+| `timed out after 5s` in the remote | The Apple TV serves one remote session at a time. Another `clicker` command, a second `clicker tui`, or the iPhone Remote takes the session away; the remote reconnects and refreshes on its own. |
 | Anything else | `clicker doctor` prints each check with a fix, and `-vv` shows the protocol frames. |
 
 ## JSON contract

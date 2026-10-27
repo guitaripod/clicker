@@ -172,6 +172,7 @@ struct Outcome {
     volume: Option<Option<f64>>,
     apps: Option<std::result::Result<Vec<(String, String)>, String>>,
     lost: bool,
+    unsent: bool,
 }
 
 impl Outcome {
@@ -184,6 +185,7 @@ impl Outcome {
             volume: None,
             apps: None,
             lost: false,
+            unsent: false,
         }
     }
 
@@ -196,6 +198,7 @@ impl Outcome {
             volume: None,
             apps: None,
             lost: is_lost(&error),
+            unsent: never_sent(&error),
         }
     }
 
@@ -208,6 +211,7 @@ impl Outcome {
             volume: None,
             apps: None,
             lost: false,
+            unsent: false,
         }
     }
 
@@ -220,6 +224,7 @@ impl Outcome {
             volume: None,
             apps: None,
             lost: false,
+            unsent: false,
         }
     }
 }
@@ -1012,6 +1017,7 @@ async fn event_loop(
     let mut app = App::new(&device.name, info.os_version.clone(), info.model.clone());
     let mut events_open = true;
     let mut inflight = 0usize;
+    let mut last_poll = tokio::time::Instant::now();
     let mut tick = tokio::time::interval(POLL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     tick.tick().await;
@@ -1029,8 +1035,12 @@ async fn event_loop(
                 let Some(key) = Key::from_event(key) else { continue };
                 let jobs = app.key(key);
                 inflight += jobs.len();
+                let busy = !jobs.is_empty();
                 for job in jobs {
                     let _ = job_tx.send(job);
+                }
+                if busy && app.power == PowerState::Off {
+                    last_poll = tokio::time::Instant::now() - Duration::from_secs(20);
                 }
             }
             outcome = done_rx.recv() => {
@@ -1045,7 +1055,13 @@ async fn event_loop(
                 }
             }
             _ = tick.tick() => {
-                if inflight == 0 {
+                let gap = if app.power == PowerState::Off {
+                    Duration::from_secs(15)
+                } else {
+                    Duration::ZERO
+                };
+                if inflight == 0 && last_poll.elapsed() >= gap {
+                    last_poll = tokio::time::Instant::now();
                     inflight += 1;
                     let _ = job_tx.send(Job::Poll);
                 }
@@ -1122,6 +1138,12 @@ impl Session {
     }
 }
 
+fn never_sent(error: &Error) -> bool {
+    matches!(error, Error::Protocol(message)
+        if message.contains("connection closed by the Apple TV")
+            || message.contains("cannot queue frame"))
+}
+
 fn is_lost(error: &Error) -> bool {
     match error {
         Error::Io(_) | Error::Timeout(_) => true,
@@ -1138,22 +1160,29 @@ async fn worker(
     out: mpsc::UnboundedSender<Outcome>,
 ) {
     while let Some(job) = jobs.recv().await {
+        let retry = job.clone();
         let mut outcome = execute(&session.client, job).await;
         if outcome.lost {
+            crate::log::info(format_args!("connection lost: {}", outcome.message));
             let was_silent = outcome.silent;
+            let unsent = outcome.unsent;
             match session.reconnect().await {
                 Ok(()) => {
-                    if let Ok((power, volume)) = status(&session.client).await {
-                        outcome.power = Some(power);
-                        outcome.volume = Some(volume);
-                    }
-                    outcome.tone = Tone::Info;
-                    outcome.silent = false;
-                    outcome.message = if was_silent {
-                        "reconnected to the Apple TV".into()
+                    crate::log::info(format_args!("reconnected to {}", session.device.address));
+                    if unsent {
+                        outcome = execute(&session.client, retry).await;
+                        outcome.lost = false;
                     } else {
-                        format!("{} · reconnected, try again", outcome.message)
-                    };
+                        if let Ok((power, volume)) = status(&session.client).await {
+                            outcome.power = Some(power);
+                            outcome.volume = Some(volume);
+                        }
+                        if !was_silent {
+                            outcome.tone = Tone::Info;
+                            outcome.message =
+                                format!("{} · reconnected, try again", outcome.message);
+                        }
+                    }
                 }
                 Err(error) => {
                     if !was_silent {
