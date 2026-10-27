@@ -1,0 +1,42 @@
+[package]
+name = "clicker"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+description = "Apple TV remote for the terminal: buttons, touch, typing, apps and power over the Companion protocol"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/guitaripod/clicker"
+homepage = "https://github.com/guitaripod/clicker"
+readme = "README.md"
+keywords = ["apple-tv", "remote-control", "cli", "companion", "tvos"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "clicker"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+mdns-sd = "0.13"
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+ed25519-dalek = "2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+rand = "0.8"
+plist = "1"
+ratatui = "0.29"
+crossterm = "0.28"
+dirs = "6"
+libc = "0.2"
