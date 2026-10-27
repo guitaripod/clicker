@@ -276,10 +276,14 @@ enum Command {
     /// the ones that fail. Safe to run before pairing.
     Doctor,
 
-    /// Interactive on-screen remote
+    /// The whole remote on screen, with Vim keys
     ///
-    /// Arrow keys move, enter presses, t types into the focused field,
-    /// +/- change volume, q quits.
+    /// h j k l press the arrows, enter selects, m is back, gg goes home.
+    /// Counts work (5j), so do macros (qa … q, then @a) and `.` repeats the
+    /// last change. `:` opens a command line, `?` lists every key, `:q` quits.
+    #[command(
+        after_help = "Example:\n  clicker tui\n\nInside: h j k l, enter, m, gg, p, i, o, ?, :vol 40, :app net, :q"
+    )]
     Tui,
 
     /// Read newline-delimited JSON commands and run them over one connection

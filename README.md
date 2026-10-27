@@ -115,6 +115,34 @@ Send several buttons without paying for a new connection each time:
 printf '%s\n' '{"op":"press","keys":["down","down","select"]}' | clicker batch --json
 ```
 
+## The remote, in Vim
+
+`clicker tui` is the whole Siri Remote on screen, and it speaks Vim: counts,
+macros, `.` and a `:` command line with tab completion.
+
+| Keys | What it does |
+| --- | --- |
+| `h` `j` `k` `l` | press left, down, up, right (counts work: `5j`) |
+| `J` `K` | hold down, hold up (fast scrolling) |
+| `enter` | select |
+| `m` | back |
+| `gg` or `H` | home |
+| `p` `s` `c` `r` | power, Siri, clickpad, refresh |
+| `w` `b` | skip ±10 seconds |
+| `ctrl-d` `ctrl-u` | page down, page up |
+| `[` `]` | channel down, channel up |
+| `i` `a` | type text, or append to it |
+| `o` or `/` | launch an app, with fuzzy search and recents |
+| `:` | command line (`:vol 40`, `:app net`, `:seek -15`, `:swipe up`) |
+| `?` | every key, on one screen |
+| `q a` … `q`, `@ a` | record a macro, then replay it (`@@` repeats the last one) |
+| `.` | repeat the last change |
+| `:q` or `Z Z` | quit |
+
+Apps are fetched once per session, recents float to the top, and every command
+reports what happened in the status line. If the window gets too small for the
+remote, it tells you the size it wants.
+
 ## What it can do
 
 | Siri Remote | `clicker` |
@@ -227,7 +255,7 @@ clicker watch [--duration S] [--events …]          stream NDJSON events
 clicker raw <identifier> [--content JSON] [--event]
 clicker batch                                      NDJSON commands on stdin
 clicker doctor                                     check discovery, credentials, connections
-clicker tui                                        interactive remote
+clicker tui                                        interactive remote with Vim keys
 clicker keys                                       list button names
 clicker completions <shell>
 ```
@@ -262,7 +290,7 @@ src/app.rs              shared command context and reconnect logic
 src/setup.rs            guided onboarding
 src/guide.rs            the cheat sheet
 src/main.rs             CLI
-src/tui.rs              on-screen remote
+src/tui/                on-screen remote: Vim grammar, palette, rendering
 ```
 
 Everything above is reverse engineered from pyatv and itsytv-core, whose

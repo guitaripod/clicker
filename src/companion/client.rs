@@ -91,8 +91,15 @@ impl Client {
         let info = client.system_info(credentials).await?;
         client.info = DeviceInfo {
             model: info
-                .get("model")
+                .get("_siriInfo")
+                .and_then(|siri| siri.get("peerData"))
+                .and_then(|peer| peer.get("productType"))
                 .and_then(Value::as_str)
+                .or_else(|| {
+                    info.get("model")
+                        .and_then(Value::as_str)
+                        .filter(|model| *model != "peerData")
+                })
                 .map(str::to_string),
             os_version: info.get("_osV").and_then(Value::as_str).map(str::to_string),
             name: info.get("name").and_then(Value::as_str).map(str::to_string),
