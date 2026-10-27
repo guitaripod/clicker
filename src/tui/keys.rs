@@ -171,8 +171,8 @@ impl Parser {
             Key::Char('b') => self.run(Action::Seek(-10.0)),
             Key::Char('[') => self.run(Action::Press(HidCommand::ChannelDown)),
             Key::Char(']') => self.run(Action::Press(HidCommand::ChannelUp)),
-            Key::Char('+') | Key::Char('=') => self.run(Action::Volume(1)),
-            Key::Char('-') | Key::Char('_') => self.run(Action::Volume(-1)),
+            Key::Char('>') | Key::Ctrl('a') => self.run(Action::Volume(1)),
+            Key::Char('<') | Key::Ctrl('x') => self.run(Action::Volume(-1)),
             Key::Char('r') | Key::Ctrl('l') => self.run(Action::Refresh),
             Key::Char('G') => self.run(Action::LastApp),
             Key::Char('i') | Key::Char('t') => self.open(Mode::Insert { append: false }),
@@ -281,6 +281,33 @@ mod tests {
         assert_eq!(parsed, Parsed::Play(None, 1));
         let (_, parsed) = feed(&[Key::Char('@'), Key::Char(':')]);
         assert_eq!(parsed, Parsed::Play(Some(':'), 1));
+    }
+
+    #[test]
+    fn volume_uses_vim_increment_and_angle_brackets() {
+        let (_, parsed) = feed(&[Key::Char('>')]);
+        assert_eq!(parsed, Parsed::Run(Action::Volume(1), 1));
+        let (_, parsed) = feed(&[Key::Char('<')]);
+        assert_eq!(parsed, Parsed::Run(Action::Volume(-1), 1));
+        let (_, parsed) = feed(&[Key::Ctrl('a')]);
+        assert_eq!(parsed, Parsed::Run(Action::Volume(1), 1));
+        let (_, parsed) = feed(&[Key::Ctrl('x')]);
+        assert_eq!(parsed, Parsed::Run(Action::Volume(-1), 1));
+        let (_, parsed) = feed(&[Key::Char('3'), Key::Char('>')]);
+        assert_eq!(parsed, Parsed::Run(Action::Volume(1), 3));
+    }
+
+    #[test]
+    fn plus_and_minus_are_left_to_the_terminal() {
+        let (parser, parsed) = feed(&[Key::Char('+')]);
+        assert_eq!(parsed, Parsed::Nothing);
+        assert!(parser.idle());
+        let (_, parsed) = feed(&[Key::Char('-')]);
+        assert_eq!(parsed, Parsed::Nothing);
+        let (_, parsed) = feed(&[Key::Char('=')]);
+        assert_eq!(parsed, Parsed::Nothing);
+        let (_, parsed) = feed(&[Key::Char('_')]);
+        assert_eq!(parsed, Parsed::Nothing);
     }
 
     #[test]

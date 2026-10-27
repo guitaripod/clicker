@@ -830,7 +830,7 @@ fn centered_message(frame: &mut Frame, area: Rect, message: &str, theme: &Theme)
 }
 
 fn draw_help(frame: &mut Frame, theme: &Theme) {
-    let area = popup(frame.area(), 78, 26);
+    let area = popup(frame.area(), 78, frame.area().height);
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -874,11 +874,11 @@ fn draw_help(frame: &mut Frame, theme: &Theme) {
         key_line("p", "power", theme),
         key_line("s", "siri", theme),
         key_line("c", "click (2c double)", theme),
-        key_line("+ -", "volume · r refresh", theme),
+        key_line("> <", "volume", theme),
+        key_line("r", "refresh", theme),
         Line::default(),
         section("SWIPES", theme),
         key_line(":swipe up", "or down · left · right", theme),
-        key_line(":click", "tap  ·  :double", theme),
     ];
 
     let right = vec![
@@ -902,7 +902,7 @@ fn draw_help(frame: &mut Frame, theme: &Theme) {
         key_line(":seek -15", ":app net", theme),
         key_line(":text hi", ":open url", theme),
         key_line(":page up", ":account me", theme),
-        key_line(":siri", ":guide · :sleep · :wake", theme),
+        key_line(":siri", ":guide · :sleep", theme),
     ];
 
     frame.render_widget(Paragraph::new(left), columns[0]);
@@ -932,7 +932,7 @@ fn key_line(keys: &str, description: &str, theme: &Theme) -> Line<'static> {
 
 fn popup(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width.saturating_sub(4)).max(20);
-    let height = height.min(area.height.saturating_sub(2)).max(8);
+    let height = height.min(area.height.saturating_sub(1)).max(8);
     Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
         y: area.y + (area.height.saturating_sub(height)) / 2,

@@ -555,7 +555,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Doctor => doctor(&mut ctx).await,
         Command::Tui => {
             let (device, client) = ctx.connect().await?;
-            clicker::tui::run(client, &device.name).await
+            let timeout = ctx.timeout;
+            clicker::tui::run(client, device, timeout).await
         }
         Command::Batch => batch(&mut ctx).await,
         Command::Completions { .. } | Command::Keys => unreachable!(),

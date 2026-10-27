@@ -128,6 +128,7 @@ macros, `.` and a `:` command line with tab completion.
 | `m` | back |
 | `gg` or `H` | home |
 | `p` `s` `c` `r` | power, Siri, clickpad, refresh |
+| `>` `<` or `ctrl-a` `ctrl-x` | volume up, down |
 | `w` `b` | skip ±10 seconds |
 | `ctrl-d` `ctrl-u` | page down, page up |
 | `[` `]` | channel down, channel up |
@@ -140,8 +141,9 @@ macros, `.` and a `:` command line with tab completion.
 | `:q` or `Z Z` | quit |
 
 Apps are fetched once per session, recents float to the top, and every command
-reports what happened in the status line. If the window gets too small for the
-remote, it tells you the size it wants.
+reports what happened in the status line. If the Apple TV sleeps, wakes or
+moves, the remote reconnects and refreshes itself instead of going dead. If the
+window gets too small for the remote, it tells you the size it wants.
 
 ## What it can do
 

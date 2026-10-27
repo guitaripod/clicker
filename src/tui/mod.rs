@@ -6,7 +6,6 @@ mod keys;
 mod view;
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event as TermEvent};
@@ -20,10 +19,12 @@ use tokio::sync::mpsc;
 
 use crate::companion::client::{Client, Event};
 use crate::companion::keys::{Gesture, HidCommand, InputAction, PowerState};
+use crate::discovery;
+use crate::store::{PairedDevice, Store};
 use crate::tui::excmd::Ex;
 use crate::tui::fuzzy::Hit;
 use crate::tui::keys::{Action, Key, Parsed, Parser};
-use crate::Result;
+use crate::{Error, Result};
 
 const HOLD: Duration = Duration::from_millis(900);
 const POLL: Duration = Duration::from_millis(1500);
@@ -170,6 +171,7 @@ struct Outcome {
     power: Option<PowerState>,
     volume: Option<Option<f64>>,
     apps: Option<std::result::Result<Vec<(String, String)>, String>>,
+    lost: bool,
 }
 
 impl Outcome {
@@ -181,10 +183,11 @@ impl Outcome {
             power: None,
             volume: None,
             apps: None,
+            lost: false,
         }
     }
 
-    fn err(error: impl std::fmt::Display) -> Outcome {
+    fn err(error: Error) -> Outcome {
         Outcome {
             message: error.to_string(),
             tone: Tone::Err,
@@ -192,6 +195,19 @@ impl Outcome {
             power: None,
             volume: None,
             apps: None,
+            lost: is_lost(&error),
+        }
+    }
+
+    fn note(message: impl Into<String>, tone: Tone) -> Outcome {
+        Outcome {
+            message: message.into(),
+            tone,
+            silent: false,
+            power: None,
+            volume: None,
+            apps: None,
+            lost: false,
         }
     }
 
@@ -203,6 +219,7 @@ impl Outcome {
             power: None,
             volume: None,
             apps: None,
+            lost: false,
         }
     }
 }
@@ -943,16 +960,15 @@ impl App {
     }
 }
 
-pub async fn run(client: Client, device: &str) -> Result<()> {
+pub async fn run(client: Client, device: PairedDevice, timeout: Duration) -> Result<()> {
     let info = client.info.clone();
-    let client = Arc::new(client);
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = event_loop(&mut terminal, client, device, info).await;
+    let result = event_loop(&mut terminal, client, device, info, timeout).await;
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -962,9 +978,10 @@ pub async fn run(client: Client, device: &str) -> Result<()> {
 
 async fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    client: Arc<Client>,
-    device: &str,
+    client: Client,
+    device: PairedDevice,
     info: crate::companion::client::DeviceInfo,
+    timeout: Duration,
 ) -> Result<()> {
     let (key_tx, mut key_rx) = mpsc::channel(64);
     std::thread::spawn(move || loop {
@@ -980,10 +997,20 @@ async fn event_loop(
 
     let (job_tx, job_rx) = mpsc::unbounded_channel();
     let (done_tx, mut done_rx) = mpsc::unbounded_channel();
-    tokio::spawn(worker(client.clone(), job_rx, done_tx));
-
-    let mut app = App::new(device, info.os_version.clone(), info.model.clone());
     let mut device_events = client.events();
+    tokio::spawn(worker(
+        Session {
+            client,
+            device: device.clone(),
+            timeout,
+            retry_at: None,
+        },
+        job_rx,
+        done_tx,
+    ));
+
+    let mut app = App::new(&device.name, info.os_version.clone(), info.model.clone());
+    let mut events_open = true;
     let mut inflight = 0usize;
     let mut tick = tokio::time::interval(POLL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -1011,9 +1038,10 @@ async fn event_loop(
                 inflight = inflight.saturating_sub(1);
                 app.apply(outcome);
             }
-            event = device_events.recv() => {
-                if let Ok(event) = event {
-                    app.device_event(&event);
+            event = device_events.recv(), if events_open => {
+                match event {
+                    Ok(event) => app.device_event(&event),
+                    Err(_) => events_open = false,
                 }
             }
             _ = tick.tick() => {
@@ -1026,13 +1054,115 @@ async fn event_loop(
     }
 }
 
+struct Session {
+    client: Client,
+    device: PairedDevice,
+    timeout: Duration,
+    retry_at: Option<tokio::time::Instant>,
+}
+
+impl Session {
+    async fn reconnect(&mut self) -> Result<()> {
+        if let Some(retry_at) = self.retry_at {
+            if tokio::time::Instant::now() < retry_at {
+                return Err(Error::Protocol("the Apple TV is still offline".into()));
+            }
+        }
+        match self.connect().await {
+            Ok(()) => {
+                self.retry_at = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.retry_at = Some(tokio::time::Instant::now() + Duration::from_secs(5));
+                Err(error)
+            }
+        }
+    }
+
+    async fn connect(&mut self) -> Result<()> {
+        let credentials = self.device.credentials()?;
+        if let Ok(client) = Client::connect(
+            &self.device.address,
+            self.device.port,
+            &credentials,
+            self.timeout,
+        )
+        .await
+        {
+            self.client = client;
+            return Ok(());
+        }
+        let found = discovery::scan(Duration::from_secs(2), false).await?;
+        let Some(candidate) = found
+            .iter()
+            .find(|candidate| candidate.id == self.device.id)
+        else {
+            return Err(Error::Protocol(
+                "the Apple TV did not answer discovery".into(),
+            ));
+        };
+        if candidate.address != self.device.address || candidate.port != self.device.port {
+            self.device.address = candidate.address.clone();
+            self.device.port = candidate.port;
+            if let Ok(mut store) = Store::load() {
+                store.upsert(self.device.clone());
+                let _ = store.save();
+            }
+        }
+        let credentials = self.device.credentials()?;
+        self.client = Client::connect(
+            &self.device.address,
+            self.device.port,
+            &credentials,
+            self.timeout,
+        )
+        .await?;
+        Ok(())
+    }
+}
+
+fn is_lost(error: &Error) -> bool {
+    match error {
+        Error::Io(_) | Error::Timeout(_) => true,
+        Error::Protocol(message) => {
+            message.contains("cannot queue frame") || message.contains("connection closed")
+        }
+        _ => false,
+    }
+}
+
 async fn worker(
-    client: Arc<Client>,
+    mut session: Session,
     mut jobs: mpsc::UnboundedReceiver<Job>,
     out: mpsc::UnboundedSender<Outcome>,
 ) {
     while let Some(job) = jobs.recv().await {
-        let outcome = execute(&client, job).await;
+        let mut outcome = execute(&session.client, job).await;
+        if outcome.lost {
+            let was_silent = outcome.silent;
+            match session.reconnect().await {
+                Ok(()) => {
+                    if let Ok((power, volume)) = status(&session.client).await {
+                        outcome.power = Some(power);
+                        outcome.volume = Some(volume);
+                    }
+                    outcome.tone = Tone::Info;
+                    outcome.silent = false;
+                    outcome.message = if was_silent {
+                        "reconnected to the Apple TV".into()
+                    } else {
+                        format!("{} · reconnected, try again", outcome.message)
+                    };
+                }
+                Err(error) => {
+                    if !was_silent {
+                        outcome.message = format!("{} · {error}", outcome.message);
+                    }
+                }
+            }
+            outcome.lost = false;
+        }
         if out.send(outcome).is_err() {
             return;
         }
@@ -1160,7 +1290,7 @@ async fn execute(client: &Client, job: Job) -> Outcome {
                 Err(error) => return Outcome::err(error),
             };
             if accounts.is_empty() {
-                return Outcome::err("this Apple TV reports no user accounts");
+                return Outcome::note("this Apple TV reports no user accounts", Tone::Err);
             }
             let best = accounts
                 .iter()
@@ -1173,7 +1303,7 @@ async fn execute(client: &Client, job: Job) -> Outcome {
                     Ok(()) => Outcome::ok(format!("switched to {name}")),
                     Err(error) => Outcome::err(error),
                 },
-                None => Outcome::err(format!("no account matches \"{query}\"")),
+                None => Outcome::note(format!("no account matches \"{query}\""), Tone::Err),
             }
         }
         Job::Text { value, append } => {
@@ -1197,27 +1327,34 @@ async fn execute(client: &Client, job: Job) -> Outcome {
             outcome.apps = Some(client.app_list().await.map_err(|error| error.to_string()));
             outcome
         }
-        Job::Refresh => {
-            let (power, volume) = status(client).await;
-            let mut outcome = Outcome::ok("refreshed");
-            outcome.power = Some(power);
-            outcome.volume = Some(volume);
-            outcome
-        }
-        Job::Poll => {
-            let (power, volume) = status(client).await;
-            let mut outcome = Outcome::quiet();
-            outcome.power = Some(power);
-            outcome.volume = Some(volume);
-            outcome
-        }
+        Job::Refresh => match status(client).await {
+            Ok((power, volume)) => {
+                let mut outcome = Outcome::ok("refreshed");
+                outcome.power = Some(power);
+                outcome.volume = Some(volume);
+                outcome
+            }
+            Err(error) => Outcome::err(error),
+        },
+        Job::Poll => match status(client).await {
+            Ok((power, volume)) => {
+                let mut outcome = Outcome::quiet();
+                outcome.power = Some(power);
+                outcome.volume = Some(volume);
+                outcome
+            }
+            Err(error) => {
+                let mut outcome = Outcome::err(error);
+                outcome.silent = true;
+                outcome
+            }
+        },
     }
 }
 
-async fn status(client: &Client) -> (PowerState, Option<f64>) {
-    let power = client.power_state().await;
-    let volume = client.volume().await.ok().flatten();
-    (power, volume)
+async fn status(client: &Client) -> Result<(PowerState, Option<f64>)> {
+    let volume = client.volume().await?;
+    Ok((client.power_state().await, volume))
 }
 
 async fn power_press(client: &Client, command: HidCommand, message: &str) -> Outcome {
