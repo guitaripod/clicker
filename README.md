@@ -125,6 +125,7 @@ macros, `.` and a `:` command line with tab completion.
 | `h` `j` `k` `l` | press left, down, up, right (counts work: `5j`) |
 | `J` `K` | hold down, hold up (fast scrolling) |
 | `enter` | select |
+| `L` | long press (hold select) |
 | `m` | back |
 | `gg` or `H` | home |
 | `p` `s` `c` `r` | power, Siri, clickpad, refresh |

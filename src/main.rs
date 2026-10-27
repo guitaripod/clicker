@@ -282,7 +282,7 @@ enum Command {
     /// Counts work (5j), so do macros (qa … q, then @a) and `.` repeats the
     /// last change. `:` opens a command line, `?` lists every key, `:q` quits.
     #[command(
-        after_help = "Example:\n  clicker tui\n\nInside: h j k l, enter, m, gg, p, i, o, ?, :vol 40, :app net, :q"
+        after_help = "Example:\n  clicker tui\n\nInside: h j k l, enter, L, m, gg, p, i, o, ?, :vol 40, :app net, :q"
     )]
     Tui,
 

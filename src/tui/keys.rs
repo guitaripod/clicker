@@ -158,6 +158,7 @@ impl Parser {
             Key::Char('H') | Key::Home => self.run(Action::Press(HidCommand::Home)),
             Key::Char('K') => self.run(Action::Hold(HidCommand::Up)),
             Key::Char('J') => self.run(Action::Hold(HidCommand::Down)),
+            Key::Char('L') => self.run(Action::Hold(HidCommand::Select)),
             Key::Enter | Key::Char(' ') => self.run(Action::Press(HidCommand::Select)),
             Key::Char('m') => self.run(Action::Press(HidCommand::Menu)),
             Key::Char('P') => self.run(Action::Press(HidCommand::PlayPause)),
@@ -281,6 +282,15 @@ mod tests {
         assert_eq!(parsed, Parsed::Play(None, 1));
         let (_, parsed) = feed(&[Key::Char('@'), Key::Char(':')]);
         assert_eq!(parsed, Parsed::Play(Some(':'), 1));
+    }
+
+    #[test]
+    fn long_press_holds_select() {
+        let (_, parsed) = feed(&[Key::Char('L')]);
+        assert_eq!(parsed, Parsed::Run(Action::Hold(HidCommand::Select), 1));
+        let (parser, parsed) = feed(&[Key::Char('2'), Key::Char('L')]);
+        assert_eq!(parsed, Parsed::Run(Action::Hold(HidCommand::Select), 2));
+        assert!(parser.idle());
     }
 
     #[test]

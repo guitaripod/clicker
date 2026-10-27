@@ -1181,9 +1181,15 @@ async fn execute(client: &Client, job: Job) -> Outcome {
                     return Outcome::err(error);
                 }
             }
-            Outcome::ok(match (command.name(), times) {
-                (name, 1) => name.to_string(),
-                (name, times) => format!("{name} ×{times}"),
+            let label = match action {
+                InputAction::Hold => format!("held {}", command.name()),
+                InputAction::Double => format!("double {}", command.name()),
+                InputAction::Single => command.name().to_string(),
+            };
+            Outcome::ok(if times == 1 {
+                label
+            } else {
+                format!("{label} ×{times}")
             })
         }
         Job::Volume { up, times } => {
