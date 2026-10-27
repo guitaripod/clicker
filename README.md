@@ -60,6 +60,9 @@ tar xzf clicker-*-x86_64-unknown-linux-gnu.tar.gz
 sudo install -m755 clicker /usr/local/bin/clicker
 ```
 
+The macOS tarball is ad-hoc signed, so if Gatekeeper refuses a downloaded
+copy, clear the quarantine flag once: `xattr -d com.apple.quarantine clicker`.
+
 **macOS:** works the same way, including on Apple Silicon. If discovery finds
 nothing, allow Local Network access for your terminal in System Settings →
 Privacy & Security → Local Network (a CLI started from a terminal inherits the
