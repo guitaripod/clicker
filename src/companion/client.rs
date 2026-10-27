@@ -393,7 +393,7 @@ impl Client {
                 name.as_str().map(|name| (bundle.clone(), name.to_string()))
             })
             .collect();
-        apps.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        apps.sort_by_key(|(_, name)| name.to_lowercase());
         Ok(apps)
     }
 
